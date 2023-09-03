@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -17,16 +18,15 @@ func calculateHash(data string, nonce int) string {
 }
 
 // 挖矿函数
-func mineBlock(data string, difficulty int) (int, string) {
-	var nonce = 0
+func mineBlock(data string, difficulty int, start, step int, ch chan<- int, wg *sync.WaitGroup) {
+	defer wg.Done()
 	prefix := strings.Repeat("0", difficulty)
-	for {
+	for nonce := start; ; nonce += step {
 		hash := calculateHash(data, nonce)
 		if strings.HasPrefix(hash, prefix) {
-			return nonce, hash
+			ch <- nonce
+			return
 		}
-		fmt.Printf("当前nonce值为：%d, hash值为：%s\n", nonce, hash)
-		nonce++
 	}
 
 }
@@ -35,9 +35,23 @@ func main() {
 
 	start := time.Now()
 	data := "hello, block chain"
-	defficulty := 6
-	nonce, hash := mineBlock(data, defficulty)
+	defficulty := 7
+	numGoroutines := 7
+	ch := make(chan int)
+	var wg sync.WaitGroup
+
+	for i := 0; i < numGoroutines; i++ {
+		wg.Add(1)
+		go mineBlock(data, defficulty, i, numGoroutines, ch, &wg)
+	}
+	go func() {
+		wg.Wait()
+		close(ch)
+	}()
+
+	nonce := <-ch
+	hash := calculateHash(data, nonce)
 	end := time.Now()
 	fmt.Printf("耗时：%v\n", end.Sub(start))
-	fmt.Printf("挖矿成功，nonce值为：%d, hash值为：%s\n", nonce, hash)
+	fmt.Printf("挖矿成功，随机数为：%d, hash为：%s\n", nonce, hash)
 }
